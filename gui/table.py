@@ -313,6 +313,7 @@ class Table(JTable):
 
         return comp
     
+
     def changeSelection(self, row, col, toggle, extend):
         # show the log entry for the selected row
         logEntry = self._extender._log.get(self._extender.logTable.convertRowIndexToModel(row))
@@ -321,15 +322,25 @@ class Table(JTable):
         self._extender._originalrequestViewer.setMessage(logEntry._originalrequestResponse.getRequest(), True)
         self._extender._originalresponseViewer.setMessage(logEntry._originalrequestResponse.getResponse(), False)
 
-        if logEntry._unauthorizedRequestResponse is not None:
-            self._extender._unauthorizedrequestViewer.setMessage(logEntry._unauthorizedRequestResponse.getRequest(), True)
-            self._extender._unauthorizedresponseViewer.setMessage(logEntry._unauthorizedRequestResponse.getResponse(), False)
+        # Respect global toggle for unauthenticated panel
+        showUnauth = True
+        if hasattr(self._extender, 'showUnauthPanel'):
+            showUnauth = self._extender.showUnauthPanel
+
+        if showUnauth:
+            if logEntry._unauthorizedRequestResponse is not None:
+                self._extender._unauthorizedrequestViewer.setMessage(logEntry._unauthorizedRequestResponse.getRequest(), True)
+                self._extender._unauthorizedresponseViewer.setMessage(logEntry._unauthorizedRequestResponse.getResponse(), False)
+            else:
+                self._extender._unauthorizedrequestViewer.setMessage("Request disabled", True)
+                self._extender._unauthorizedresponseViewer.setMessage("Response disabled", False)
         else:
-            self._extender._unauthorizedrequestViewer.setMessage("Request disabled", True)
-            self._extender._unauthorizedresponseViewer.setMessage("Response disabled", False)
+            # When hidden, do not touch unauth viewers (prevents Burp from re-attaching/expanding them)
+            pass
 
         self._extender._currentlyDisplayedItem = logEntry
 
+        # Expansion logic — never expand unauth when hidden
         if col == 3:
             collapse(self._extender, self._extender.modified_requests_tabs)
             collapse(self._extender, self._extender.unauthenticated_requests_tabs)
@@ -341,12 +352,20 @@ class Table(JTable):
         elif col == 5 or col == 7:
             collapse(self._extender, self._extender.original_requests_tabs)
             collapse(self._extender, self._extender.modified_requests_tabs)
-            expand(self._extender, self._extender.unauthenticated_requests_tabs)
+            if showUnauth:
+                expand(self._extender, self._extender.unauthenticated_requests_tabs)
+            else:
+                # Ensure it stays collapsed when hidden
+                collapse(self._extender, self._extender.unauthenticated_requests_tabs)
         else:
             collapse(self._extender, self._extender.original_requests_tabs)
             collapse(self._extender, self._extender.modified_requests_tabs)
             collapse(self._extender, self._extender.unauthenticated_requests_tabs)
 
+        # As a last step, if unauth panel is hidden, force a rebuild to ensure it's not attached
+        if hasattr(self._extender, 'showUnauthPanel') and (not self._extender.showUnauthPanel):
+            if hasattr(self._extender, '_rebuildRequestsPanel'):
+                self._extender._rebuildRequestsPanel()
         JTable.changeSelection(self, row, col, toggle, extend)
         return
 

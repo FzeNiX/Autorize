@@ -12,6 +12,8 @@ from javax.swing import JScrollPane
 from javax.swing import JPopupMenu
 from javax.swing import JTabbedPane
 from javax.swing import JPanel
+from javax.swing import JCheckBoxMenuItem
+from javax.swing.event import ListSelectionListener
 from java.awt import GridLayout
 from java.awt import Toolkit
 from java.lang import Math
@@ -128,6 +130,14 @@ class Tabs():
         self._extender.menu.add(copyURLitem)
         self._extender.menu.add(retestSelecteditem)
         self._extender.menu.add(retestAllitem)
+        # --- NEW: toggle for showing/hiding the Unauthenticated panel
+        if not hasattr(self._extender, "showUnauthPanel"):
+            self._extender.showUnauthPanel = True
+        self._extender._miToggleUnauth = JCheckBoxMenuItem("Show unauthenticated panel", self._extender.showUnauthPanel)
+        self._extender._miToggleUnauth.addActionListener(ToggleUnauthPanel(self._extender))
+        self._extender.menu.addSeparator()
+        self._extender.menu.add(self._extender._miToggleUnauth)
+        # --- END NEW
         self._extender.menu.add(deleteSelectedItem) # disabling this feature until bug will be fixed.
         message_editor = MessageEditor(self._extender)
 
@@ -162,12 +172,37 @@ class Tabs():
         self._extender.modified_requests_tabs.addTab("Expand", None)
         self._extender.modified_requests_tabs.setSelectedIndex(0)
 
-        self._extender.requests_panel = JPanel(GridLayout(3,0))
-        self._extender.requests_panel.add(self._extender.modified_requests_tabs)
-        self._extender.requests_panel.add(self._extender.original_requests_tabs)
-        self._extender.requests_panel.add(self._extender.unauthenticated_requests_tabs)
+        # Build requests panel dynamically so we can hide/show unauthenticated pane
+        self._extender.requests_panel = JPanel()
 
+        def _rebuild():
+            # wipe previous contents
+            self._extender.requests_panel.removeAll()
+            # auto-rows, 1 column: GridLayout(0,1) will create rows = number of components added
+            self._extender.requests_panel.setLayout(GridLayout(0, 1))
+            # always add modified and original viewers
+            self._extender.requests_panel.add(self._extender.modified_requests_tabs)
+            self._extender.requests_panel.add(self._extender.original_requests_tabs)
+            # conditionally add unauthenticated viewer
+            try:
+                if getattr(self._extender, "showUnauthPanel", True):
+                    self._extender.requests_panel.add(self._extender.unauthenticated_requests_tabs)
+            except Exception:
+                # defensive: if the attribute or component is missing, ignore
+                pass
+            # refresh UI
+            self._extender.requests_panel.revalidate()
+            self._extender.requests_panel.repaint()
+
+        # expose the rebuild function for other modules to call
+        self._extender._rebuildRequestsPanel = _rebuild
+
+        # initial build
+        _rebuild()
+
+        # add the tab to the main tab pane
         self._extender.tabs.addTab("Request/Response Viewers", self._extender.requests_panel)
+
         
         self._extender.tabs.addTab("Configuration", self._extender._cfg_splitpane)
         self._extender.tabs.setSelectedIndex(1)
@@ -307,3 +342,27 @@ class CopySelectedURLToClipBoard(AbstractAction):
             self._extender._currentlyDisplayedItem._requestResponse).getUrl()))
         clpbrd = Toolkit.getDefaultToolkit().getSystemClipboard()
         clpbrd.setContents(stringSelection, None)
+
+# --- NEW: Action listener to toggle Unauthenticated panel visibility
+class ToggleUnauthPanel(ActionListener):
+    def __init__(self, extender):
+        self._extender = extender
+
+    def actionPerformed(self, e):
+        self._extender.showUnauthPanel = e.getSource().isSelected()
+        if hasattr(self._extender, "_rebuildRequestsPanel"):
+            self._extender._rebuildRequestsPanel()
+# --- END NEW
+
+
+# --- NEW: listeners to keep layout consistent on selection/child changes
+class _RebuildOnSelect(ListSelectionListener):
+    def __init__(self, extender):
+        self._extender = extender
+    def valueChanged(self, e):
+        # Only rebuild when selection change is final
+        if e.getValueIsAdjusting():
+            return
+        if hasattr(self._extender, "_rebuildRequestsPanel"):
+            self._extender._rebuildRequestsPanel()
+
