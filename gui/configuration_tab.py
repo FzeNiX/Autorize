@@ -16,7 +16,6 @@ from javax.swing import JCheckBox
 from javax.swing import JButton
 from javax.swing import JPanel
 from javax.swing import JLabel
-from java.awt import Dimension
 
 from table import UpdateTableEDT
 
@@ -32,9 +31,9 @@ class ConfigurationTab():
                                     actionPerformed=self.startOrStop)
         self._extender.startButton.setBounds(10, 20, 230, 30)
 
-        self._extender.clearButton = JButton("Clear table", actionPerformed=self.clearTable)
+        self._extender.clearButton = JButton("Clear List", actionPerformed=self.clearList)
         self._extender.clearButton.setBounds(10, 80, 100, 30)
-        self._extender.autoScroll = JCheckBox("Auto scroll")
+        self._extender.autoScroll = JCheckBox("Auto Scroll")
         self._extender.autoScroll.setBounds(145, 80, 130, 30)
 
         self._extender.ignore304 = JCheckBox("Ignore 304/204 status code responses")
@@ -49,6 +48,14 @@ class ConfigurationTab():
         self._extender.doUnauthorizedRequest = JCheckBox("Check unauthenticated")
         self._extender.doUnauthorizedRequest.setBounds(280, 65, 300, 30)
         self._extender.doUnauthorizedRequest.setSelected(True)
+
+        # NEW: Show/hide Unauthenticated panel checkbox in Configuration
+        if not hasattr(self._extender, "showUnauthPanel"):
+            self._extender.showUnauthPanel = True
+        self._extender.showUnauthPanelCheck = JCheckBox("Show unauthenticated panel")
+        self._extender.showUnauthPanelCheck.setBounds(280, 105, 300, 30)
+        self._extender.showUnauthPanelCheck.setSelected(self._extender.showUnauthPanel)
+        self._extender.showUnauthPanelCheck.addActionListener(self.toggleShowUnauth)
 
         self._extender.replaceQueryParam = JCheckBox("Replace query params", actionPerformed=self.replaceQueryHanlder)
         self._extender.replaceQueryParam.setBounds(280, 85, 300, 30)
@@ -91,7 +98,7 @@ class ConfigurationTab():
         self._extender.filtersTabs = JTabbedPane()
         self._extender.filtersTabs = self._extender.filtersTabs
         self._extender.filtersTabs.addTab("Enforcement Detector", self._extender.EDPnl)
-        self._extender.filtersTabs.addTab("Unauthentication Detector ", self._extender.EDPnlUnauth)
+        self._extender.filtersTabs.addTab("Detector Unauthenticated", self._extender.EDPnlUnauth)
         self._extender.filtersTabs.addTab("Interception Filters", self._extender.filtersPnl)
         self._extender.filtersTabs.addTab("Match/Replace", self._extender.MRPnl)
         self._extender.filtersTabs.addTab("Table Filter", self._extender.filterPnl)
@@ -106,10 +113,6 @@ class ConfigurationTab():
         layout.setAutoCreateGaps(True)
         layout.setAutoCreateContainerGaps(True)
 
-        minsize = Dimension(0, 0)
-        self._extender.filtersTabs.setMinimumSize(minsize)
-        self.config_pnl.setMinimumSize(minsize)
-
         layout.setHorizontalGroup(
             layout.createSequentialGroup()
                 .addGroup(
@@ -120,6 +123,7 @@ class ConfigurationTab():
                             GroupLayout.PREFERRED_SIZE,
                             GroupLayout.PREFERRED_SIZE,
                             )
+                    
                     .addComponent(
                         self._extender.clearButton,
                         GroupLayout.PREFERRED_SIZE,
@@ -194,6 +198,12 @@ class ConfigurationTab():
                             GroupLayout.PREFERRED_SIZE,
                         )
                         .addComponent(
+                            self._extender.showUnauthPanelCheck,
+                            GroupLayout.PREFERRED_SIZE,
+                            GroupLayout.PREFERRED_SIZE,
+                            GroupLayout.PREFERRED_SIZE,
+                        )
+                        .addComponent(
                             self._extender.replaceQueryParam,
                             GroupLayout.PREFERRED_SIZE,
                             GroupLayout.PREFERRED_SIZE,
@@ -237,22 +247,20 @@ class ConfigurationTab():
                         GroupLayout.PREFERRED_SIZE,
                         GroupLayout.PREFERRED_SIZE,
                     )
-                    .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
                     .addComponent(
-                        self._extender.clearButton,
+                        self._extender.interceptRequestsfromRepeater,
                         GroupLayout.PREFERRED_SIZE,
                         GroupLayout.PREFERRED_SIZE,
                         GroupLayout.PREFERRED_SIZE,
-                        )
-                    .addComponent(
-                            self._extender.interceptRequestsfromRepeater,
-                            GroupLayout.PREFERRED_SIZE,
-                            GroupLayout.PREFERRED_SIZE,
-                            GroupLayout.PREFERRED_SIZE,
-                        )
-                )
+                    )
                     .addComponent(
                         self._extender.doUnauthorizedRequest,
+                        GroupLayout.PREFERRED_SIZE,
+                        GroupLayout.PREFERRED_SIZE,
+                        GroupLayout.PREFERRED_SIZE,
+                    )
+                    .addComponent(
+                        self._extender.showUnauthPanelCheck,
                         GroupLayout.PREFERRED_SIZE,
                         GroupLayout.PREFERRED_SIZE,
                         GroupLayout.PREFERRED_SIZE,
@@ -263,12 +271,20 @@ class ConfigurationTab():
                         GroupLayout.PREFERRED_SIZE,
                         GroupLayout.PREFERRED_SIZE,
                     )
+                .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
+                    .addComponent(
+                        self._extender.clearButton,
+                        GroupLayout.PREFERRED_SIZE,
+                        GroupLayout.PREFERRED_SIZE,
+                        GroupLayout.PREFERRED_SIZE,
+                        )
                     .addComponent(
                             self._extender.autoScroll,
                             GroupLayout.PREFERRED_SIZE,
                             GroupLayout.PREFERRED_SIZE,
                             GroupLayout.PREFERRED_SIZE,
                         )
+                )
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.BASELINE)
                     .addComponent(
                         self._extender.savedHeadersTitlesCombo,
@@ -323,6 +339,16 @@ class ConfigurationTab():
         self._extender._cfg_splitpane.setRightComponent(self._extender.filtersTabs)
         self._extender._cfg_splitpane.setLeftComponent(self.config_pnl)
 
+    def toggleShowUnauth(self, event):
+        state = self._extender.showUnauthPanelCheck.isSelected()
+        self._extender.showUnauthPanel = state
+        # Update popup menu checkbox if present
+        if hasattr(self._extender, "_miToggleUnauth"):
+            self._extender._miToggleUnauth.setSelected(state)
+        # Rebuild the viewers layout if available
+        if hasattr(self._extender, "_rebuildRequestsPanel"):
+            self._extender._rebuildRequestsPanel()
+
     def startOrStop(self, event):
         if self._extender.startButton.getText() == "Autorize is off":
             self._extender.startButton.setText("Autorize is on")
@@ -333,7 +359,7 @@ class ConfigurationTab():
             self._extender.startButton.setSelected(False)
             self._extender.intercept = 0
     
-    def clearTable(self, event):
+    def clearList(self, event):
         self._extender._lock.acquire()
         oldSize = self._extender._log.size()
         self._extender._log.clear()
